@@ -1,0 +1,1 @@
+"""Generators for markdown and Mermaid diagram output."""
