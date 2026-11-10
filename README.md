@@ -5,107 +5,56 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/release/python-3100/)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-green.svg)](https://pypi.org/project/schema2doc/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests Passing](https://img.shields.io/badge/tests-passing-12%2F12-brightgreen.svg)](#testing)
+[![Tests Passing](https://img.shields.io/badge/tests-14%20passed-brightgreen.svg)](#testing)
+
+[English](README.md) | [Русский](README.ru.md)
 
 ---
 
-## Elevator Pitch
+## Overview
 
-**schema2doc** — это open-source утилита для быстрой инспекции и документирования структуры баз данных.
+**schema2doc** is a zero-dependency Python CLI tool designed for automated **SQLite** schema introspection and technical documentation generation. It inspects local SQLite databases using low-level PRAGMA statements and produces self-contained Markdown specifications featuring interactive **Mermaid.js** Entity-Relationship diagrams.
 
-Если вам нужно быстро «понять» базу: какие таблицы есть, какие типы полей, какие ключи и связи, какие индексы — ничего не нужно ставить тяжёлых инструментов (Java, Graphviz, внешние ORM) и ручками печатать документацию.
+### Supported DBMS
 
-Просто передайте путь к SQLite-файлу — `schema2doc` сам выполнит introspection, соберёт метаданные и сгенерирует аккуратный `README.md` с таблицами и Mermaid ER-диаграммой.
+* **SQLite 3** (`.db`, `.sqlite`, `.sqlite3`) — native introspection via system PRAGMA commands (`table_info`, `foreign_key_list`, `index_list`).
+* *(Modular inspector architecture designed for straightforward extensions like DuckDB or PostgreSQL.)*
+
+### Key Architectural Highlights
+
+* **Zero Dependencies:** Built entirely on Python 3.10+ standard libraries (`sqlite3`, `dataclasses`, `argparse`). No heavy external dependencies, no JVM, and no Graphviz installation required.
+* **Zero-Read Data Privacy:** Queries only schema catalog metadata without reading table rows. Completely safe to run against production database dumps.
+* **Native Markdown & Mermaid:** Outputs clean, GitHub-flavored Markdown tables and standards-compliant Mermaid ERDs that render natively in GitHub, GitLab, Obsidian, and VS Code.
 
 ---
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/your-org/schema2doc.git
+# Clone the repository
+git clone https://github.com/limeqqq/schema2doc.git
 cd schema2doc
+
+# Generate schema documentation for the demo database
 python -m schema2doc examples/ecommerce.db -o SCHEMA.md
 ```
 
-Или одной строчкой:
-
-```bash
-python -m schema2doc examples/ecommerce.db -o SCHEMA.md
-```
-
-После запуска вы получите готовый Markdown-файл с документацией.
-
 ---
 
-## Features
+## AI-Assisted Engineering Workflow
 
-- **Zero External Dependencies** — чистая стандартная библиотека Python (`sqlite3`, `dataclasses`, `argparse`). Никаких внешних пакетов и тяжёлых движков.
-- **Automatic Mermaid ER Diagrams** — генерация интерактивной ER-диаграммы прямо внутри Markdown (`erDiagram`), рендерится на GitHub и в любом Mermaid-совместимом редакторе.
-- **Full Schema Introspection** — типы данных, primary keys, foreign keys (с правилами `ON DELETE` / `ON UPDATE`), составные и уникальные индексы.
-- **Zero Maintenance Metadata** — introspection через нативные PRAGMA-запросы SQLite, минимум кода и максимум возможностей.
-
----
-
-## Live Demo
-
-Ниже — реальная Mermaid ERD-диаграмма из сгенерированного примера `examples/ECOMMERCE_SCHEMA.md`. Она отрисовывается прямо в этом README (GitHub Mermaid) и в Markdown-редакторах, поддерживающих Mermaid.
-
-```mermaid
-erDiagram
-    categories {
-        int id PK
-        string name
-        string slug
-    }
-    order_items {
-        int id PK
-        int order_id FK
-        int product_id FK
-        int quantity
-        float unit_price
-    }
-    orders {
-        int id PK
-        int user_id FK
-        string status
-        float total_amount
-        string created_at
-    }
-    products {
-        int id PK
-        int category_id FK
-        string title
-        float price
-        int is_active
-    }
-    users {
-        int id PK
-        string email
-        string full_name
-        string created_at
-    }
-order_items }o--|| products : "product_id"
-order_items }o--|| orders : "order_id"
-orders }o--|| users : "user_id"
-products }o--|| categories : "category_id"
-```
-
----
-
-## CLI Reference
-
-| Аргумент | Описание | По умолчанию |
-|---|---|---|
-| `source` | Путь к SQLite-файлу базы данных (`.db` / `.sqlite`). | — |
-| `-o`, `--output` | Путь к выходному Markdown-файлу. | `SCHEMA.md` |
-| `--title` | Название базы данных для отчёта. | Имя файла-источника без расширения |
-
----
+This project was architected and built using test-driven, agent-assisted workflows. A detailed case study covering prompt engineering, architectural decisions, and agent collaboration with OpenCode is documented in [AI_WORKFLOW.md](AI_WORKFLOW.md).
 
 ## Testing
 
+Run the test suite using standard Python unittest:
+
 ```bash
-python -m unittest discover -s tests -v
+python -m unittest discover tests
 ```
 
-Результат: **12/12 тестов пройдены успешно** (0 внешних зависимостей — `unittest` из стандартной библиотеки).
+Includes 14 unit tests covering DTO mappings, composite key parsing (PK/FK), Mermaid ERD syntax compliance, and database error boundaries.
+
+## License
+
+MIT License. See [LICENSE](LICENSE) for details.
