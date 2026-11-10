@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "schema2doc"
+version = "0.1.0"
+description = "Zero-dependency SQLite schema to Markdown & Mermaid documentation generator"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Schema2Doc Team", email = "team@schema2doc.dev" }
+]
+dependencies = []
+
+[project.scripts]
+schema2doc = "schema2doc.cli:main"
+
+[project.urls]
+repository = "https://github.com/limeqqq/schema2doc"
+homepage = "https://github.com/limeqqq/schema2doc"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["schema2doc*"]
