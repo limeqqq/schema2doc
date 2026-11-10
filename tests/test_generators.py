@@ -1,8 +1,9 @@
-"""Tests for the schema2doc generators."""
+"""Tests for the schema2doc generators using unittest."""
 
+import os
 import sqlite3
 import tempfile
-import os
+import unittest
 import sys
 from pathlib import Path
 
@@ -14,163 +15,157 @@ from schema2doc.generators.mermaid import MermaidGenerator
 from schema2doc.generators.markdown import MarkdownDocGenerator
 
 
-def test_mermaid_generator_produces_valid_block():
-    """Verify that MermaidGenerator produces a valid Mermaid ERD block."""
-    # Build a temporary in-memory SQLite database with FK relationships
-    fd, db_path = tempfile.mkstemp(suffix=".db")
-    import os
-    os.close(fd)
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    c.execute(
-        "CREATE TABLE users (id INTEGER PRIMARY KEY NOT NULL, email TEXT NOT NULL, created_at TEXT)"
-    )
-    c.execute(
-        "CREATE TABLE orders (id INTEGER PRIMARY KEY NOT NULL, user_id INTEGER NOT NULL, order_date TEXT, total REAL, FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE RESTRICT)"
-    )
-    c.execute(
-        "CREATE TABLE order_items (id INTEGER PRIMARY KEY NOT NULL, order_id INTEGER NOT NULL, item_id INTEGER NOT NULL, quantity INTEGER NOT NULL DEFAULT 1, FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE, FOREIGN KEY (item_id) REFERENCES users(id))"
-    )
-    conn.commit()
-    conn.close()
+class TestGenerators(unittest.TestCase):
+    """Verify that Mermaid and Markdown generators produce correct output."""
 
-    inspector = SQLiteInspector(db_path)
-    tables = inspector.inspect()
-    inspector.close()
+    def setUp(self):
+        """Create a temporary SQLite database with tables and FK relationships."""
+        self.fd, self.db_path = tempfile.mkstemp(suffix=".db")
+        os.close(self.fd)
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        c.execute(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY NOT NULL, email TEXT NOT NULL, created_at TEXT)"
+        )
+        c.execute(
+            "CREATE TABLE orders (id INTEGER PRIMARY KEY NOT NULL, user_id INTEGER NOT NULL, order_date TEXT, total REAL, "
+            "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE RESTRICT)"
+        )
+        c.execute(
+            "CREATE TABLE order_items (id INTEGER PRIMARY KEY NOT NULL, order_id INTEGER NOT NULL, item_id INTEGER NOT NULL, quantity INTEGER NOT NULL DEFAULT 1, "
+            "FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE, "
+            "FOREIGN KEY (item_id) REFERENCES users(id))"
+        )
+        conn.commit()
+        conn.close()
 
-    mermaid = MermaidGenerator()
-    md = mermaid.generate(tables)
+        inspector = SQLiteInspector(self.db_path)
+        self.tables = inspector.inspect()
+        inspector.close()
 
-    # Should start with ```mermaid and end with ```
-    assert md.startswith("```mermaid"), "Mermaid output must start with ```mermaid"
-    assert md.endswith("```"), "Mermaid output must end with ```"
+    def tearDown(self):
+        """Clean up the temporary database file."""
+        try:
+            os.remove(self.db_path)
+        except OSError:
+            pass
 
-    # Should contain the three tables
-    assert "users" in md
-    assert "orders" in md
-    assert "order_items" in md
+    def test_mermaid_generator_produces_valid_block(self):
+        """Verify that MermaidGenerator produces a valid Mermaid ERD block."""
+        mermaid = MermaidGenerator()
+        md = mermaid.generate(self.tables)
 
-    # Should contain relationship arrows
-    assert "}o--||" in md, "Mermaid ERD must contain relationship arrows (}o--||)"
+        # Should start with ```mermaid and end with ```
+        self.assertTrue(md.startswith("```mermaid"), "Mermaid output must start with ```mermaid")
+        self.assertTrue(md.endswith("```"), "Mermaid output must end with ```")
 
-    # Should contain normalized types (int, string, float) not raw SQL types
-    assert '"int"' not in md or "int " in md, "Types should be normalized"
-    assert '"string"' not in md or "string " in md
+        # Should contain the three tables
+        self.assertIn("users", md)
+        self.assertIn("orders", md)
+        self.assertIn("order_items", md)
 
-    print("PASS: test_mermaid_generator_produces_valid_block")
+        # Should contain relationship arrows
+        self.assertIn("}o--||", md, "Mermaid ERD must contain relationship arrows (}o--||)")
 
+        # Should contain normalized types (int, string, float) not raw SQL types
+        self.assertTrue('"int"' not in md or "int " in md, "Types should be normalized")
+        self.assertTrue('"string"' not in md or "string " in md)
 
-def test_mermaid_normalizes_types():
-    """Verify that MermaidGenerator normalizes types correctly."""
-    from schema2doc.models import Column
+    def test_mermaid_normalizes_types(self):
+        """Verify that MermaidGenerator normalizes types correctly."""
+        mg = MermaidGenerator()
 
-    mg = MermaidGenerator()
+        # Integer type -> int
+        self.assertEqual(mg.normalize_type("INTEGER"), "int")
+        self.assertEqual(mg.normalize_type("INT"), "int")
 
-    # Integer type -> int
-    assert mg.normalize_type("INTEGER") == "int"
-    assert mg.normalize_type("INT") == "int"
+        # Float types -> float
+        self.assertEqual(mg.normalize_type("REAL"), "float")
+        self.assertEqual(mg.normalize_type("FLOAT"), "float")
 
-    # Float types -> float
-    assert mg.normalize_type("REAL") == "float"
-    assert mg.normalize_type("FLOAT") == "float"
+        # DateTime types -> datetime
+        self.assertEqual(mg.normalize_type("DATETIME"), "datetime")
+        self.assertEqual(mg.normalize_type("DATE"), "datetime")
 
-    # DateTime types -> datetime
-    assert mg.normalize_type("DATETIME") == "datetime"
-    assert mg.normalize_type("DATE") == "datetime"
+        # VARCHAR -> string
+        self.assertEqual(mg.normalize_type("VARCHAR(255)"), "string")
+        self.assertEqual(mg.normalize_type("CHAR"), "string")
 
-    # VARCHAR -> string
-    assert mg.normalize_type("VARCHAR(255)") == "string"
-    assert mg.normalize_type("CHAR") == "string"
+        # Default fallback
+        self.assertEqual(mg.normalize_type(""), "string")
+        self.assertEqual(mg.normalize_type("SOME_RANDOM_TYPE"), "some_random_type")
 
-    # Default fallback
-    assert mg.normalize_type("") == "string"
-    assert mg.normalize_type("SOME_RANDOM_TYPE") == "some_random_type"
+    def test_markdown_generator_produces_valid_structure(self):
+        """Verify that MarkdownDocGenerator produces correct Markdown structure."""
+        md = MarkdownDocGenerator().generate(self.tables, db_name="Test DB")
 
-    print("PASS: test_mermaid_normalizes_types")
+        # Should start with H1
+        self.assertTrue(md.startswith("# Test DB"), "Markdown must start with H1 header")
 
+        # Should have table count badge
+        self.assertIn("**Tables:** 3", md, "Markdown must show table count")
 
-def test_markdown_generator_produces_valid_structure():
-    """Verify that MarkdownDocGenerator produces correct Markdown structure."""
-    fd, db_path = tempfile.mkstemp(suffix=".db")
-    import os
-    os.close(fd)
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    c.execute(
-        "CREATE TABLE users (id INTEGER PRIMARY KEY NOT NULL, email TEXT NOT NULL, created_at TEXT)"
-    )
-    c.execute(
-        "CREATE TABLE orders (id INTEGER PRIMARY KEY NOT NULL, user_id INTEGER NOT NULL, order_date TEXT, total REAL, FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE RESTRICT)"
-    )
-    conn.commit()
-    conn.close()
+        # Should have ERD section
+        self.assertIn("## Entity Relationship Diagram", md, "Must have ERD section")
 
-    inspector = SQLiteInspector(db_path)
-    tables = inspector.inspect()
-    inspector.close()
+        # Should have Schema Details section
+        self.assertIn("## Schema Details", md, "Must have Schema Details section")
 
-    md = MarkdownDocGenerator().generate(tables, db_name="Test DB")
+        # Should have table sections (H3)
+        self.assertIn("### users", md, "Must have users table section")
+        self.assertIn("### orders", md, "Must have orders table section")
+        self.assertIn("### order_items", md, "Must have order_items table section")
 
-    # Should start with H1
-    assert md.startswith("# Test DB"), "Markdown must start with H1 header"
+        # Should have markdown table headers
+        self.assertIn("| Column | Type | Nullable | Default | Constraints |", md, "Must have column table headers")
 
-    # Should have table count badge
-    assert "**Tables:** 2" in md, "Markdown must show table count"
-
-    # Should have ERD section
-    assert "## Entity Relationship Diagram" in md, "Must have ERD section"
-
-    # Should have Schema Details section
-    assert "## Schema Details" in md, "Must have Schema Details section"
-
-    # Should have table sections (H3)
-    assert "### users" in md, "Must have users table section"
-    assert "### orders" in md, "Must have orders table section"
-
-    # Should have markdown table headers
-    assert "| Column | Type | Nullable | Default | Constraints |" in md, "Must have column table headers"
-
-    # Should have FK info
-    assert "user_id -> users(id)" in md, "Must include foreign key references"
-
-    print("PASS: test_markdown_generator_produces_valid_structure")
+        # Should have FK info
+        self.assertIn("user_id -> users(id)", md, "Must include foreign key references")
+        self.assertIn("order_id -> orders(id)", md, "Must include foreign key references")
+        self.assertIn("item_id -> users(id)", md, "Must include foreign key references")
 
 
-def test_markdown_includes_indices_and_fks():
-    """Verify that MarkdownDocGenerator includes indices and FK info."""
-    fd, db_path = tempfile.mkstemp(suffix=".db")
-    import os
-    os.close(fd)
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
-    # Create indexes
-    c.execute("CREATE TABLE users (id INTEGER PRIMARY KEY NOT NULL, email TEXT NOT NULL, created_at TEXT)")
-    c.execute("CREATE INDEX idx_users_email ON users(email)")
-    # Create orders with FK
-    c.execute(
-        "CREATE TABLE orders (id INTEGER PRIMARY KEY NOT NULL, user_id INTEGER NOT NULL, order_date TEXT, total REAL, FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE RESTRICT)"
-    )
-    conn.commit()
-    conn.close()
+class TestGeneratorsWithIndices(unittest.TestCase):
+    """Verify generator includes indices and FK info when present."""
 
-    inspector = SQLiteInspector(db_path)
-    tables = inspector.inspect()
-    inspector.close()
+    def setUp(self):
+        """Create a temporary SQLite database with indexes."""
+        self.fd, self.db_path = tempfile.mkstemp(suffix=".db")
+        os.close(self.fd)
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+        # Create indexes
+        c.execute("CREATE TABLE users (id INTEGER PRIMARY KEY NOT NULL, email TEXT NOT NULL, created_at TEXT)")
+        c.execute("CREATE INDEX idx_users_email ON users(email)")
+        # Create orders with FK
+        c.execute(
+            "CREATE TABLE orders (id INTEGER PRIMARY KEY NOT NULL, user_id INTEGER NOT NULL, order_date TEXT, total REAL, "
+            "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE RESTRICT)"
+        )
+        conn.commit()
+        conn.close()
 
-    md = MarkdownDocGenerator().generate(tables, db_name="Test DB")
+        inspector = SQLiteInspector(self.db_path)
+        self.tables = inspector.inspect()
+        inspector.close()
 
-    # Check that Indices section exists
-    assert "#### Indices" in md, "Must have Indices section when indexes exist"
+    def tearDown(self):
+        """Clean up the temporary database file."""
+        try:
+            os.remove(self.db_path)
+        except OSError:
+            pass
 
-    # Check that foreign keys are listed
-    assert "#### Foreign Keys" in md, "Must have Foreign Keys section"
+    def test_markdown_includes_indices_and_fks(self):
+        """Verify that MarkdownDocGenerator includes indices and FK info."""
+        md = MarkdownDocGenerator().generate(self.tables, db_name="Test DB")
 
-    print("PASS: test_markdown_includes_indices_and_fks")
+        # Check that Indices section exists
+        self.assertIn("#### Indices", md, "Must have Indices section when indexes exist")
+
+        # Check that foreign keys are listed
+        self.assertIn("#### Foreign Keys", md, "Must have Foreign Keys section")
 
 
 if __name__ == "__main__":
-    test_mermaid_generator_produces_valid_block()
-    test_mermaid_normalizes_types()
-    test_markdown_generator_produces_valid_structure()
-    test_markdown_includes_indices_and_fks()
-    print("\nAll generator tests passed!")
+    unittest.main()
