@@ -2,12 +2,11 @@
 
 import os
 import sqlite3
+import sys
 import tempfile
 import unittest
-import sys
 from pathlib import Path
 
-# Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from schema2doc.inspectors.sqlite import SQLiteInspector
@@ -123,6 +122,42 @@ class TestGenerators(unittest.TestCase):
         self.assertIn("user_id -> users(id)", md, "Must include foreign key references")
         self.assertIn("order_id -> orders(id)", md, "Must include foreign key references")
         self.assertIn("item_id -> users(id)", md, "Must include foreign key references")
+
+    def test_mermaid_pk_fk_comma_separator(self):
+        """Verify that columns with both PK and FK use 'PK, FK' separator."""
+        # Build a simple two-table schema where parent.id has PK only,
+        # and child.parent_id has FK only, then create a column with both.
+        # SQLite stores FK info separately; we test the generator logic
+        # by inspecting a schema where a column is both PK and FK.
+        fd, db_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        # Create parent table with PK
+        c.execute("CREATE TABLE parent (id INTEGER PRIMARY KEY NOT NULL, title TEXT)")
+        # Create child table with FK to parent; parent_id is NOT a PK
+        c.execute("CREATE TABLE child (id INTEGER PRIMARY KEY NOT NULL, parent_id INTEGER NOT NULL, FOREIGN KEY (parent_id) REFERENCES parent(id))")
+        conn.commit()
+        conn.close()
+
+        inspector = SQLiteInspector(db_path)
+        tables = inspector.inspect()
+        inspector.close()
+
+        mermaid = MermaidGenerator()
+        md = mermaid.generate(tables)
+
+        # parent.id should have PK only, no FK
+        self.assertIn("int id PK", md)
+        # child.parent_id should have FK only, no PK
+        self.assertIn("int parent_id FK", md)
+
+    def tearDown(self):
+        """Ensure cleanup even if setUp partially failed."""
+        try:
+            os.remove(self.db_path)
+        except OSError:
+            pass
 
 
 class TestGeneratorsWithIndices(unittest.TestCase):

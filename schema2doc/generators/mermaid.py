@@ -24,9 +24,15 @@ class MermaidGenerator:
             lines.append(f"    {table.name} {{")
             for col in table.columns:
                 normalized_type = self.normalize_type(col.data_type)
-                pk_marker = " PK" if col.is_pk else ""
-                fk_marker = " FK" if self._is_fk_column(table, col.name) else ""
-                lines.append(f"        {normalized_type} {col.name}{pk_marker}{fk_marker}".rstrip())
+                markers: List[str] = []
+                if col.is_pk:
+                    markers.append("PK")
+                if self._is_fk_column(table, col.name):
+                    markers.append("FK")
+                attr_line = f"        {normalized_type} {col.name}"
+                if markers:
+                    attr_line += f" {', '.join(markers)}"
+                lines.append(attr_line)
             lines.append("    }")
 
         # Emit relationships based on foreign keys.

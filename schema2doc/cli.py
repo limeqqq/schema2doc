@@ -1,6 +1,7 @@
 """Command-line interface for schema2doc."""
 
 import argparse
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -50,6 +51,9 @@ def main(argv: list[str] | None = None) -> int:
     inspector = SQLiteInspector(str(source_path))
     try:
         tables = inspector.inspect()
+    except sqlite3.DatabaseError:
+        print(f"Error: '{source_path}' is not a valid SQLite database.", file=sys.stderr)
+        return 1
     finally:
         inspector.close()
 

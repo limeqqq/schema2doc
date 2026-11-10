@@ -123,6 +123,26 @@ class TestCLI(unittest.TestCase):
             except OSError:
                 pass
 
+    def test_cli_non_sqlite_file(self):
+        """Verify that passing a non-SQLite .db file results in a clean exit 1."""
+        # Write some garbage to a .db path so it opens as a file but not a valid DB.
+        garbage_path = Path(tempfile.mktemp(suffix=".db"))
+        garbage_path.write_text("this is not a database")
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "schema2doc", str(garbage_path)],
+                capture_output=True,
+                text=True,
+                cwd=str(PROJECT_ROOT),
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Error", result.stderr)
+        finally:
+            try:
+                garbage_path.unlink()
+            except OSError:
+                pass
+
 
 if __name__ == "__main__":
     unittest.main()
